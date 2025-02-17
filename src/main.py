@@ -1,35 +1,36 @@
 import multiprocessing
+from mcts import MCTS, MCTSNode
 from load_problems import format_dataset, Question
 from typing import List, Tuple, Dict, Any
 from llm import LLM
 from tqdm import tqdm
 
-def process_question(args: Tuple[LLM, Question]) -> Tuple[str, List[float], List[Dict[str, float]]]:
-    """Process a single question with token probability analysis.
+def process_question(model: LLM, question: Question) -> Tuple[str, List[float], List[Dict[str, float]]]:
+    """Process a single question with token probability analysis using MCTS.
     
     Args:
-        args: Tuple containing (LLM instance, question text)
+        model: LLM instance
+        question: Question object containing the problem
     Returns:
         Tuple of (generated text, chosen logprobs, token probabilities)
     """
-    model, question = args
     
-    prompt = f"""Solve this math problem step by step. Separate each step with two newlines (\n\n). 
-    After your final step, add two newlines and put just the final numerical answer in LaTeX boxed notation like this: \boxed{{answer}}
+    root_prompt = f"""Solve this math problem step by step. Separate each step with two newlines (\n\n). 
+    After your final step, add two newlines and put just the final numerical answer in LaTeX boxed notation like this: \\boxed{{answer}}
 
     Here's the question:
-    {question}
+    {question.question}
 
     Let me solve this step by step:"""
 
-    # generate_with_probs now returns (text, logprobs, token_probs)
-    text, logprobs, token_probs = model.generate_with_probs(
-        prompt,  # Now just passing a single prompt string
-        temperature=0.95,
-        max_tokens=512
-    )
+    root = MCTSNode(root_prompt, [], None, False, 100.0)
+
+    mcts = MCTS(model, root)
+
+    for _ in range(10):
+        mcts.step()
     
-    return text, logprobs, token_probs
+    return mcts.export_tree()
 
 def main():
     model = LLM("nvidia/OpenMath2-Llama3.1-8B")
@@ -39,15 +40,13 @@ def main():
     
     # Create a pool of workers
     num_processes = 32
-    
-    # Prepare arguments for each worker
-    args = [(model, question) for question in questions]
-    args = args[100:101]
+
+    questions = questions[0:1]
     
     # Process questions in parallel with progress bar
     with multiprocessing.Pool(num_processes) as pool:
         results = list(tqdm(
-            pool.imap(process_question, args),
+            pool.starmap(process_question, [(model, question) for question in questions]),
             total=len(questions),
             desc="Processing questions"
         ))

@@ -20,7 +20,7 @@ class LLM:
         prompt: str,
         temperature: float = 0.95,
         max_tokens: int = 512,
-    ) -> Tuple[str, List[float], List[Dict[str, float]]]:
+    ) -> Tuple[str, List[Tuple[str, float]], List[Dict[str, float]]]:
         """Generate completion with token probabilities for a given prompt.
         
         Args:
@@ -31,7 +31,7 @@ class LLM:
         Returns:
             Tuple containing:
                 - Generated text
-                - List of logprobs for chosen tokens
+                - List of tuples (token, logprob) for chosen tokens
                 - List of dictionaries containing token alternatives and their probabilities
         """
         response = completion(
@@ -58,8 +58,8 @@ class LLM:
             
             for token_info in logprobs_data:
                 token_alternatives = {}
-                # Store logprob of chosen token
-                chosen_logprobs.append(token_info.logprob)
+                # Store token and logprob as tuple
+                chosen_logprobs.append((token_info.token, token_info.logprob))
                 
                 # Add the main token and alternatives in one go
                 all_alternatives = [
