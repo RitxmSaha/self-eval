@@ -1,16 +1,16 @@
 import multiprocessing
-from datasets import load_aime_questions
+from load_problems import format_dataset, Question
 from typing import List, Tuple, Dict, Any
 from llm import LLM
 from tqdm import tqdm
 
-def process_question(args: Tuple[LLM, str]) -> Tuple[str, List[Dict[str, float]]]:
+def process_question(args: Tuple[LLM, Question]) -> Tuple[str, List[float], List[Dict[str, float]]]:
     """Process a single question with token probability analysis.
     
     Args:
         args: Tuple containing (LLM instance, question text)
     Returns:
-        Tuple of (generated text, token probabilities)
+        Tuple of (generated text, chosen logprobs, token probabilities)
     """
     model, question = args
     
@@ -22,17 +22,19 @@ def process_question(args: Tuple[LLM, str]) -> Tuple[str, List[Dict[str, float]]
 
     Let me solve this step by step:"""
 
-    outputs = model.generate_with_probs(
-        [prompt],
+    # generate_with_probs now returns (text, logprobs, token_probs)
+    text, logprobs, token_probs = model.generate_with_probs(
+        prompt,  # Now just passing a single prompt string
         temperature=0.95,
         max_tokens=512
     )
-    return outputs[0]  # Return first (and only) result
+    
+    return text, logprobs, token_probs
 
 def main():
-    model = LLM("Qwen/Qwen2.5-Coder-32B-Instruct")
+    model = LLM("nvidia/OpenMath2-Llama3.1-8B")
     # Load AIME questions
-    questions = load_aime_questions()
+    questions = format_dataset("qq8933/AIME_1983_2024")
     print(f"Loaded {len(questions)} AIME questions")
     
     # Create a pool of workers
@@ -40,6 +42,7 @@ def main():
     
     # Prepare arguments for each worker
     args = [(model, question) for question in questions]
+    args = args[100:101]
     
     # Process questions in parallel with progress bar
     with multiprocessing.Pool(num_processes) as pool:
@@ -50,14 +53,14 @@ def main():
         ))
     
     # Process results
-    for i, (text, token_data) in enumerate(results):
+    for i, (text, logprobs, token_data) in enumerate(results):
         print(f"\nQuestion {i+1}:")
         print(f"Generated text: {text}")
         print("\nToken-by-token alternatives:")
         for j, alternatives in enumerate(token_data, 1):
             print(f"\nToken {j} alternatives:")
             sorted_alternatives = sorted(alternatives.items(), key=lambda x: x[1], reverse=True)
-            for token, prob in sorted_alternatives[:10]:  # Show top 10 alternatives
+            for token, prob in sorted_alternatives:  # Show top 10 alternatives
                 print(f"'{token}': {prob:.4f}")
 
 if __name__ == "__main__":

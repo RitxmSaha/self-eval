@@ -1,3 +1,4 @@
+import multiprocessing
 from typing import List, Tuple, Dict, Any
 import os
 import numpy as np
@@ -16,87 +17,79 @@ class LLM:
         
     def generate_with_probs(
         self,
-        prompts: List[str],
+        prompt: str,
         temperature: float = 0.95,
         max_tokens: int = 512,
-    ) -> List[Tuple[str, List[Dict[str, Any]]]]:
-        """Generate completions with token probabilities for given prompts.
+    ) -> Tuple[str, List[float], List[Dict[str, float]]]:
+        """Generate completion with token probabilities for a given prompt.
         
         Args:
-            prompts: List of input prompts
+            prompt: Input prompt
             temperature: Sampling temperature (0.0 = deterministic)
             max_tokens: Maximum number of tokens to generate
             
         Returns:
-            List of tuples containing:
+            Tuple containing:
                 - Generated text
+                - List of logprobs for chosen tokens
                 - List of dictionaries containing token alternatives and their probabilities
         """
-        results = []
-        
-        for prompt in prompts:
-            response = completion(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=30,
-                api_base=self.api_base,
-                api_key=self.api_key,
-                logprobs=True,
-                top_logprobs=20,
-                top_p=0.95
-            )
-            
-            # Extract generated text and token probabilities
-            generated_text = response.choices[0].message.content
-            
-            # Process token probabilities with alternatives
-            token_data = []
-            try:
-                logprobs_data = response.choices[0].logprobs.content
-                
-                for token_info in logprobs_data:
-                    token_alternatives = {}
-                    # Add the main token and alternatives in one go
-                    all_alternatives = [
-                        (token_info.token, token_info.logprob)
-                    ] + [(alt.token, alt.logprob) for alt in token_info.top_logprobs]
-                    
-                    # Convert logprobs to probabilities directly
-                    for token, logprob in all_alternatives:
-                        if logprob is not None:
-                            token_alternatives[token] = np.exp(logprob)
-                            
-                    token_data.append(token_alternatives)
-                    
-            except Exception as e:
-                print(f"Error processing logprobs: {str(e)}")
-            
-            results.append((generated_text, token_data))
-            
-        return results
-
-# Example usage:
-if __name__ == "__main__":
-    model = LLM("nvidia/OpenMath2-Llama3.1-8B")
-    
-    prompts = ["What is quantum physics?"]
-    try:
-        outputs = model.generate_with_probs(
-            prompts,
-            temperature=0.95,
-            max_tokens=50
+        response = completion(
+            model=self.model_name,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=30,
+            api_base=self.api_base,
+            api_key=self.api_key,
+            logprobs=True,
+            top_logprobs=20,
+            top_p=0.95
         )
         
-        for text, token_data in outputs:
-            print(f"\nGenerated text: {text}")
-            print("\nToken-by-token alternatives:")
-            for i, alternatives in enumerate(token_data, 1):
-                print(f"\nToken {i} alternatives:")
-                # Sort alternatives by probability
-                sorted_alternatives = sorted(alternatives.items(), key=lambda x: x[1], reverse=True)
-                for token, prob in sorted_alternatives:
-                    print(f"'{token}': {prob:.4f}")
-    except Exception as e:
-        print(f"Error running inference: {str(e)}") 
+        # Extract generated text and token probabilities
+        generated_text = response.choices[0].message.content
+        
+        # Process token probabilities with alternatives
+        token_data = []
+        chosen_logprobs = []
+        try:
+            logprobs_data = response.choices[0].logprobs.content
+            
+            for token_info in logprobs_data:
+                token_alternatives = {}
+                # Store logprob of chosen token
+                chosen_logprobs.append(token_info.logprob)
+                
+                # Add the main token and alternatives in one go
+                all_alternatives = [
+                    (token_info.token, token_info.logprob)
+                ] + [(alt.token, alt.logprob) for alt in token_info.top_logprobs]
+                
+                # Convert logprobs to probabilities directly
+                for token, logprob in all_alternatives:
+                    if logprob is not None:
+                        token_alternatives[token] = np.exp(logprob)
+                        
+                token_data.append(token_alternatives)
+                
+        except Exception as e:
+            print(f"Error processing logprobs: {str(e)}")
+        
+        return generated_text, chosen_logprobs, token_data
+
+def process_single_question(args: Tuple[LLM, str]) -> Tuple[str, List[Dict[str, float]]]:
+    """Process a single AIME question with token probability analysis.
+    
+    Args:
+        args: Tuple containing (LLM instance, question text)
+    Returns:
+        Tuple of (generated text, token probabilities)
+    """
+    model, question = args
+    outputs = model.generate_with_probs(
+        question,
+        temperature=0.95,
+        max_tokens=512
+    )
+    return outputs[0], outputs[2]  # Return first (and only) result and token probabilities
