@@ -4,6 +4,9 @@ from load_problems import format_dataset, Question
 from typing import List, Tuple, Dict, Any
 from llm import LLM
 from tqdm import tqdm
+import json
+from datetime import datetime
+import os
 
 def process_question(model: LLM, question: Question) -> Tuple[str, List[float], List[Dict[str, float]]]:
     """Process a single question with token probability analysis using MCTS.
@@ -27,8 +30,10 @@ def process_question(model: LLM, question: Question) -> Tuple[str, List[float], 
 
     mcts = MCTS(model, root)
 
-    for _ in range(10):
+    for _ in range(2):
         mcts.step()
+
+
     
     return mcts.export_tree()
 
@@ -38,6 +43,11 @@ def main():
     questions = format_dataset("qq8933/AIME_1983_2024")
     print(f"Loaded {len(questions)} AIME questions")
     
+    # Create output directory with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = f"outputs/AIME-{timestamp}"
+    os.makedirs(output_dir, exist_ok=True)
+    
     # Create a pool of workers
     num_processes = 32
 
@@ -45,22 +55,20 @@ def main():
     
     # Process questions in parallel with progress bar
     with multiprocessing.Pool(num_processes) as pool:
-        results = list(tqdm(
+        for idx, result in enumerate(tqdm(
             pool.starmap(process_question, [(model, question) for question in questions]),
             total=len(questions),
             desc="Processing questions"
-        ))
-    
-    # Process results
-    for i, (text, logprobs, token_data) in enumerate(results):
-        print(f"\nQuestion {i+1}:")
-        print(f"Generated text: {text}")
-        print("\nToken-by-token alternatives:")
-        for j, alternatives in enumerate(token_data, 1):
-            print(f"\nToken {j} alternatives:")
-            sorted_alternatives = sorted(alternatives.items(), key=lambda x: x[1], reverse=True)
-            for token, prob in sorted_alternatives:  # Show top 10 alternatives
-                print(f"'{token}': {prob:.4f}")
+        )):
+            # Save each result to its own JSON file
+            output_path = os.path.join(output_dir, f"{idx+1}.json")
+            with open(output_path, 'w') as f:
+                json.dump({
+                    'question_index': idx,
+                    'question_text': questions[idx].question,
+                    'question_answer': questions[idx].answer,
+                    'result': result
+                }, f, indent=2)
 
 if __name__ == "__main__":
     main()

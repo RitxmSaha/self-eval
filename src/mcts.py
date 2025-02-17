@@ -14,6 +14,7 @@ class MCTSNode:
         self.visits = 1
         self.value = value
         self.value_reasoning = []
+        self.ucb = 0.0
 
     def ucb_score(self, exploration_constant: float = math.sqrt(2)) -> float:
         if self.visits == 0:
@@ -58,12 +59,12 @@ class MCTS:
         for step in steps:
             accumulated_len = 0
             probs = []
-            while accumulated_len < len(step):
+            while accumulated_len < len(step) and idx < len(solution_probs):
                 probs.append(total_probs[idx])
                 accumulated_len += len(solution_probs[0])
                 idx += 1
 
-            while(solution_probs[idx][0] ==  "\n\n"):
+            while(idx < len(solution_probs) and solution_probs[idx][0] ==  "\n\n"):
                 idx += 1
 
             step_tuples.append((step, probs))
@@ -80,7 +81,7 @@ class MCTS:
         self.nodes.extend(added_nodes)
 
         ### VISITING LOGIC START ###
-        for i, node in enumerate(added_nodes.reverse(), start=1):
+        for i, node in enumerate(reversed(added_nodes), start=1):
             node.parent.visits += i
             self.assign_reward(node)
 
@@ -107,8 +108,7 @@ class MCTS:
         
         # Traverse up the tree to collect all steps
         while current is not None:
-            if current.state.current_step:  # Only add if there's a step
-                steps.append(current.state.current_step)
+            steps.append(current.text)  # Use text directly from the node
             current = current.parent
         
         # Reverse steps to get them in correct order (root to leaf)
@@ -162,11 +162,13 @@ class MCTS:
         [Analysis]...
         [Score]\\boxed{{score}}"""
 
-        score_text = self.llm.generate(
+        score_text, _, _ = self.llm.generate_with_probs(
             evaluation_prompt,
             temperature=0.1,  # Low temperature for consistent scoring
             max_tokens=512    # Increased to accommodate analysis + score
-        ).strip()
+        )
+
+        score_text = score_text.strip()
         
         try:
             # Find the last instance of score in \boxed{...} format
