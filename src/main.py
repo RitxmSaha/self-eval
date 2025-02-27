@@ -8,7 +8,7 @@ import json
 from datetime import datetime
 import os
 
-def process_question(model: LLM, question: Question) -> Tuple[str, List[float], List[Dict[str, float]]]:
+def process_question(model_str: str, question: Question) -> Tuple[str, List[float], List[Dict[str, float]]]:
     """Process a single question with token probability analysis using MCTS.
     
     Args:
@@ -18,27 +18,44 @@ def process_question(model: LLM, question: Question) -> Tuple[str, List[float], 
         Tuple of (generated text, chosen logprobs, token probabilities)
     """
     
-    root_prompt = f"""Solve this math problem step by step. Separate each step with two newlines (\n\n). 
-    After your final step, add two newlines and put just the final numerical answer in LaTeX boxed notation like this: \\boxed{{answer}}
+    root_prompt = f"""Solve this math problem step by step.
 
-    Here's the question:
-    {question.question}
+Instructions:
+1. Break down your solution into clear, logical steps
+2. Separate each step with two newlines (\n\n)
+3. Show all your work and calculations
+4. After your final step, add two newlines
+5. End with ONLY the final numerical answer in LaTeX boxed notation: \\boxed{{answer}}
 
-    Let me solve this step by step:"""
+Example of expected format:
+Step 1: Understand the problem. We need to find the area of a triangle with sides 5, 12, and 13.
+\n\n
+Step 2: First, I'll check if this is a right triangle by using the Pythagorean theorem. 5² + 12² = 25 + 144 = 169 = 13². This is a right triangle with legs 5 and 12, and hypotenuse 13.
+\n\n
+Step 3: For a right triangle, the area can be calculated as (base × height)/2. Using the legs as base and height: Area = (5 × 12)/2 = 60/2 = 30.
+\n\n
+\\boxed{30}
+
+Here's the question:
+{question.question}
+
+Let me solve this step by step:"""
+
+    model = LLM(model_str)
 
     root = MCTSNode(root_prompt, [], None, False, 100.0)
 
     mcts = MCTS(model, root)
 
-    for _ in range(2):
+    for _ in range(25):
         mcts.step()
 
 
     
-    return mcts.export_tree()
+    return mcts.export_tree(question)
 
 def main():
-    model = LLM("nvidia/OpenMath2-Llama3.1-8B")
+    model_str = "nvidia/OpenMath2-Llama3.1-8B"
     # Load AIME questions
     questions = format_dataset("qq8933/AIME_1983_2024")
     print(f"Loaded {len(questions)} AIME questions")
@@ -51,12 +68,12 @@ def main():
     # Create a pool of workers
     num_processes = 32
 
-    questions = questions[0:1]
+    questions = questions[0:5]
     
     # Process questions in parallel with progress bar
     with multiprocessing.Pool(num_processes) as pool:
         for idx, result in enumerate(tqdm(
-            pool.starmap(process_question, [(model, question) for question in questions]),
+            pool.starmap(process_question, [(model_str, question) for question in questions]),
             total=len(questions),
             desc="Processing questions"
         )):

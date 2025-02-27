@@ -6,7 +6,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "datasets>=3.3.0",
+    "graphviz>=0.20.3",
     "litellm>=1.61.3",
+    "matplotlib>=3.10.0",
     "tenacity>=9.0.0",
     "tqdm>=4.67.1",
 ]

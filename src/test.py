@@ -6,7 +6,7 @@ import os
 # Define the API base URL and model name
 api_base = "http://avior.mlfoundry.com/live-inference/v1"
 api_key = os.getenv("CUSTOM_LLM_API_KEY")
-model_name = "openai/Qwen/Qwen2.5-Coder-32B-Instruct"
+model_name = "openai/nvidia/OpenMath2-Llama3.1-8B"
 
 # Prepare the message for the model
 messages = [{"role": "user", "content": "What is the capital of France?"}]
@@ -18,7 +18,8 @@ response = completion(
     api_base=api_base,
     api_key=api_key,
     logprobs=True,
-    top_logprobs=10
+    top_logprobs=10,
+    max_tokens=50
 )
 
 # Print the response content
